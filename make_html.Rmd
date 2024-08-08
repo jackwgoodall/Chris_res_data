@@ -1,0 +1,53 @@
+---
+title: "Antibiotic Resistance Clusters"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(dplyr)
+library(kableExtra)
+```
+
+```{r, results='asis', echo = FALSE}
+# Load the necessary data
+load("output/data/unique_clusters.Rdata")
+clusters <- unique_clusters
+load("output/data/filtered_df_clean.Rdata")
+df <- filtered_df_clean
+
+# Function to color the R and S values
+colorize <- function(x) {
+  ifelse(x == "R", 
+         paste0('<span style="color:red;">', x, '</span>'), 
+         paste0('<span style="color:green;">', x, '</span>'))
+}
+
+# Apply the coloring function to the relevant columns
+df <- df %>%
+  mutate(across(c(AMC, AMX, CIP, GEN, TRI), colorize))
+
+# Iterate through each cluster
+for (i in seq_along(clusters)) {
+  cluster_name <- names(clusters)[i] # Get the name of the cluster
+  organism_ids <- clusters[[i]]
+  
+  # Print the cluster heading as a Markdown header
+  cat(paste0("\n### ", cluster_name, "\n"))
+  
+  # Filter the dataframe for the current cluster
+  cluster_data <- df %>%
+    filter(SpecNo_org %in% organism_ids)
+  
+  # Find the index of the row that corresponds to the cluster name
+  row_bold_index <- which(cluster_data$SpecNo_org == cluster_name)
+  
+  # Generate and print the table with bolding applied to the specific row
+  output_table <- kable(cluster_data, format = "html", escape = FALSE) %>%
+    row_spec(row_bold_index, bold = TRUE) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE)
+  
+  cat(htmltools::HTML(output_table), sep = "\n")
+}
+```
