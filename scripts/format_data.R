@@ -1,4 +1,4 @@
-#load definitions 
+#load defintions 
 load("output/data/params.Rdata")
 
 # Load necessary libraries
