@@ -1,8 +1,15 @@
 # Define what you want
-Orgs <- c("ESCO", "KLPN")
-Abx <- c("AMC", "AMX", "CIP", "GEN", "TRI")
 
-save(Orgs, Abx, file ="output/data/params.Rdata")
+Orgs <- c("ESCO", "KLPN")
+Exclude <- c("STAU", "STEP", "STCA")
+Abx <- c("AMC", "AMX", "CIP", "GEN", "TRI")
+Start <- as.Date("01/01/2022", format = "%d/%m/%Y") ## Enter this as dd/mm/YYYY
+End <- as.Date("01/02/2022", format = "%d/%m/%Y") ## Enter this as dd/mm/YYYY
+
+
+#### Nothing needs to be changed below here
+
+save(Orgs, Exclude, Abx, Start, End, file ="output/data/params.Rdata")
 
 html_output_name <- paste("Example Output", Sys.Date())
 code_output_name <- "Example Output - R source code"

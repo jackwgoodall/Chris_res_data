@@ -1,6 +1,8 @@
 ---
 title: "Antibiotic Resistance Clusters"
-output: html_document
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
 ---
 
 ```{r setup, include=FALSE}
@@ -8,14 +10,38 @@ library(knitr)
 library(dplyr)
 library(kableExtra)
 ```
-
-```{r, results='asis', echo = FALSE}
-# Load the necessary data
+```{r load}
+# Load the  data
 load("output/data/unique_clusters.Rdata")
 clusters <- unique_clusters
 load("output/data/filtered_df_clean.Rdata")
-df <- filtered_df_clean
+load("output/data/params.Rdata")
+missing_rows <- readRDS("output/data/missing_rows.Rds")
+```
+#  Clusters
 
+## Details 
+```{r}
+# Print the pipeline run information
+cat(paste0("This pipeline was run on the ", format(Sys.Date(), "%d/%m/%Y"), ".\n"))
+
+# Print the date range information, ensuring start and end are dates
+cat(paste0("It includes isolates from ", format(Start, "%d/%m/%Y"), 
+           " to the ", format(End, "%d/%m/%Y"), ".\n"))
+
+# Calculate the number of non-missing 'Date Ordered' rows
+row_sums <- sum(!is.na(missing_rows$`Date Ordered`))
+
+# Check if any row sum is greater than 0 and print the appropriate message
+if (row_sums > 0) {
+  cat("Please note that some isolates were missing data. Please see the next tab.\n")
+} else {
+  cat("All isolates had enough data to perform the clustering. Phew \n")
+}
+cat("Italicised entries show isolates that appear in more than one cluster.")
+```
+
+```{r, results='asis', echo = FALSE}
 # Function to color the R and S values
 colorize <- function(x) {
   ifelse(x == "R", 
@@ -24,30 +50,77 @@ colorize <- function(x) {
 }
 
 # Apply the coloring function to the relevant columns
-df <- df %>%
-  mutate(across(c(AMC, AMX, CIP, GEN, TRI), colorize))
+filtered_df_clean <- filtered_df_clean %>% 
+  mutate(across(all_of(Abx), colorize))
+
+# Identify SpecNo_org values that appear in more than one list item
+duplicated_orgs <- names(table(unlist(clusters)))[table(unlist(clusters)) > 1]
 
 # Iterate through each cluster
 for (i in seq_along(clusters)) {
-  cluster_name <- names(clusters)[i] # Get the name of the cluster
+  # Create the cluster heading using the loop index
+  cluster_heading <- paste0("Cluster ", i)
+  cluster_name <- names(clusters)[i]  
   organism_ids <- clusters[[i]]
   
   # Print the cluster heading as a Markdown header
-  cat(paste0("\n### ", cluster_name, "\n"))
+  cat(paste0("\n### ", cluster_heading, "\n"))
   
   # Filter the dataframe for the current cluster
-  cluster_data <- df %>%
+  cluster_data <- filtered_df_clean %>% 
     filter(SpecNo_org %in% organism_ids)
   
-  # Find the index of the row that corresponds to the cluster name
-  row_bold_index <- which(cluster_data$SpecNo_org == cluster_name)
+  # Italicize SpecNo if SpecNo_org is duplicated
+  cluster_data <- cluster_data %>%
+    mutate(SpecNo = ifelse(SpecNo_org %in% duplicated_orgs,
+                           paste0("<i>", SpecNo, "</i>"),
+                           SpecNo))
   
-  # Generate and print the table with bolding applied to the specific row
-  output_table <- kable(cluster_data, format = "html", escape = FALSE) %>%
-    row_spec(row_bold_index, bold = TRUE) %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                  full_width = FALSE)
+  # Then select the relevant columns for display
+  cluster_data <- cluster_data %>%
+    select(`Date Ordered`, SpecNo, all_of(Abx))
   
-  cat(htmltools::HTML(output_table), sep = "\n")
+  # Extract the reference pattern, including Organism_BL and Location_Code
+  reference_pattern <- filtered_df_clean %>% 
+    filter(SpecNo_org == cluster_name) %>% 
+    select(Organism = Organism_BL, Location = Location_Code, all_of(Abx)) %>%
+    mutate(Organism = paste0("**", Organism, "**"),
+           Location = paste0("**", Location, "**"))
+  
+  # Display the reference pattern table with Organism and Location
+  if (nrow(reference_pattern) > 0) {
+    reference_table <- kable(reference_pattern, format = "html", escape = FALSE) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                    full_width = FALSE)
+    cat(htmltools::HTML(reference_table), sep = "\n")
+  }
+  
+  # Generate and print the cluster data table
+  if (nrow(cluster_data) > 0) {
+    output_table <- kable(cluster_data, format = "html", escape = FALSE) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                    full_width = FALSE)
+    cat(htmltools::HTML(output_table), sep = "\n")
+  }
 }
 ```
+
+# Missing
+```{r, results='asis', echo = FALSE}
+# Subset the missing_rows dataframe to select only SpecNo and Abx columns
+missing_data_subset <- missing_rows %>%
+  select(SpecNo, Organism = Organism_BL, Location = Location_Code, all_of(Abx))
+
+# Apply the colorization function to the relevant columns
+missing_data_colored <- missing_data_subset %>%
+  mutate(across(all_of(Abx), colorize))
+
+# Create and display the table
+missing_table <- kable(missing_data_colored, format = "html", escape = FALSE) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE)
+
+# Print the table
+cat(htmltools::HTML(missing_table), sep = "\n")
+```
+ 
