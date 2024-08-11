@@ -1,40 +1,54 @@
-#load defintions 
+#load defintions
 load("output/data/params.Rdata")
 
 # Load necessary libraries
 pacman::p_load("tidyverse", "readxl", "lubridate")
 
-# Decide which organisms and antibiotics you want
-load("output/data/params.Rdata")
-
-# import dummy dataframe (including converting one to NA to show how this could be handled)
+# import dummy dataframe 
+## including converting one to NA to show how this could be handled
+## making a dummy 'location' column which will need the right syntax
 df <- read_excel("input/Pseudo_res_data.xlsx")
 df$Sensitivity[5] <- NA
 
-df <- df %>%
-  mutate(SpecNo_org = paste0(SpecNo, Organism))
-
-# Reshape
+### Format data frame
+# Reshape - including only the abx in Abx and excluding gram pos
 filtered_df <- df %>%
   arrange(desc(`Date Ordered`)) %>%
-  filter(Antibiotic %in% Abx & Organism %in% Orgs) %>%
+  filter(Antibiotic %in% c(Abx, "ESBL+", "AMPC+") & !(Organism %in% Exclude)) %>%
   pivot_wider(names_from = "Antibiotic",
               values_from = "Sensitivity") 
 
-# Convert S/R to 1/0 (S and H made the same)
-df_binary <- filtered_df %>% mutate(across(all_of(Abx), ~ case_when(
+
+# Add some fake wards
+filtered_df <- filtered_df %>%
+  mutate(Location_Code = sample(c("W1", "W2", "W3", "W4", "W5"), size = n(), replace = TRUE))
+
+# Remove the duplicates (**** SpecNo NEEDS TO BE CHANGED TO MRN - this is just an example)
+df_unique <- filtered_df %>%
+  distinct(Organism, SpecNo, Location_Code, .keep_all = TRUE)
+
+# Make new Organism plus resistance mechanism
+df_unique <- df_unique %>%
+  mutate(Organism_BL = case_when(`ESBL+` == "P" ~ paste0(Organism, "_ESBL"),
+                                 `AMPC+` == "P" ~ paste0(Organism, "_AMPC"),
+                                  TRUE ~ Organism),
+         SpecNo_org = paste(SpecNo, Organism, Location_Code, sep = "_"),  # this is what gets compared
+         Org_location = paste(Organism_BL, Location_Code, sep = "_")) # this is what we can group on 
+
+#paste0# Convert S/R to 1/0 (S and H made the same)
+df_binary <- df_unique %>% mutate(across(all_of(Abx), ~ case_when(
   . == "S" | . == "H" ~ 0,
   . == "R" ~ 1,
   TRUE ~ as.numeric(.)
 )))
 
-# Find and save rows with NA (using the binary dataset as reference but the original as source)
-filtered_df %>%
+# Find rows with NA values in any of the specified columns in the binary dataset
+df_unique %>%
   filter(rowSums(is.na(select(df_binary, all_of(Abx)))) > 0) %>%
-  saveRDS(file = "output/data/missing_values.rds")
+  saveRDS(file = "output/data/missing_rows.Rds")
 
 # And one for use later
-filtered_df_clean <- filtered_df %>%
+filtered_df_clean <- df_unique %>%
   filter(rowSums(is.na(select(df_binary, all_of(Abx)))) == 0)
 
 # keep only those with complete data
@@ -45,10 +59,10 @@ df_binary <- df_binary %>%
 result_lists <- list()
 
 # Loop through each organism separately
-for (organism in Orgs) {
+for (organism in unique(df_binary$Org_location)) {
   # Filter the binary dataframe by organism
   df_organism <- df_binary %>%
-    filter(Organism == organism)
+    filter(Org_location == organism)
   
   # Calculate the Manhattan distance matrix for the current organism
   distance_matrix <- as.matrix(dist(df_organism[, Abx], method = "manhattan"))
